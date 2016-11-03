@@ -1,0 +1,63 @@
+Sept 30, 2016
+CS 3251 Programming Assignment 1
+Section A
+Ruobin Ling
+rling3@gatech.edu
+
+--------------------- Included files ---------------------
+sensor-server-tcp - TCP server script
+sensor-server-udp - UDP server script
+sensor-tcp 		  - TCP client script
+sensor-udp 		  - UDP client script
+Sample.txt 		  - Sample runtime output
+
+--------------------- Execution ---------------------
+All code files are executable Python scripts. 
+
+TCP:
+	1. Start Server: "./sensor-server-tcp -p <port> -f <filename>"
+			-p: Optional. Port number of server. Defaults to 12345.
+			-f: Optional. Name of credentials file in current directory. Defaults to "passwords.csv"
+
+	2. Execute Client "./sensor-tcp -u <username> -c <password> -r <data> -s <serverIP> -p <serverPort> -d
+			-u: Required. Username.
+			-c: Required. Password.
+			-r: Required. Sensor reading. 
+			-s: Required. Server IP address.
+			-p: Required. Server port.
+			-d: Optional. Enables debug messages for both server and client.
+
+UDP:
+	1. Start Server: "./sensor-server-udp -p <port> -f <filename>"
+			-p: Optional. Port number of server. Defaults to 12345.
+			-f: Optional. Name of credentials file in current directory. Defaults to "passwords.csv"
+
+	2. Execute Client "./sensor-udp -u <username> -c <password> -r <data> -s <serverIP> -p <serverPort> -d
+			-u: Required. Username.
+			-c: Required. Password.
+			-r: Required. Sensor reading. 
+			-s: Required. Server IP address.
+			-p: Required. Server port.
+			-d: Optional. Enables debug messages for both server and client.
+
+--------------------- Application Protocol ---------------------
+Each server stores sensor readings from clients and returns aggregation calculations. The only difference in the protocol between the UDP and TCP server/clients is the timeout behavior for lost packets.
+
+	Step 1: Client sends a request to the server with a username and sensor reading. 
+		Format: "<username>|<data>|<debugFlag>"
+
+	Step 2: Server sends challenge response for authentication. The challenge is a random 64 character string. 
+
+	Step 3: Client performs MD5 hashing on the challenge string concatenated with username and password. 
+		Psuedo-code: md5.hash(response+username+password)
+
+	Step 4: Server performs the same hash to verify client credentials.
+
+	Step 5: If authenticated, the server will store the sensor reading, perform calculations and return an informative response to the client.
+
+UDP Timeout Behavior: The client and server simply "give up" when a packet is lost.
+	The server will return to listening for a Step 1 request.
+	The client will stop execution on any timeout exception.
+
+
+

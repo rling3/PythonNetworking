@@ -1,0 +1,131 @@
+#!/usr/bin/python
+
+from socket import *
+import random
+import argparse
+import string
+import sys
+import hashlib
+from datetime import datetime
+
+
+#Flags
+parser = argparse.ArgumentParser(description = "Sensor data aggregation TCP server.")
+parser.add_argument('-f', required=False, type=str, help="Credentials CSV file", dest = 'credFile')
+parser.add_argument('-p', required=False, type=int, help="Server Port", dest = 'serverPort')
+args = parser.parse_args()
+
+if args.credFile:
+	credFile = args.credFile
+else:
+	credFile = "passwords.csv"
+if args.serverPort:
+	port = args.serverPort
+else:
+	port = 12345
+DATA = {}
+
+def generateChallengeString():
+	random.seed(14)
+	d = [random.choice(string.letters) for x in xrange(64)]
+	return "".join(d)
+
+def findUser(username, credentials, DEBUG):
+	for credential in credentials:
+		if username == credential.split(",")[0]:
+			if DEBUG:
+				print "Found client user in passwords.csv"
+			return credential.split(",")[1].rstrip()
+	return None
+
+def verifyHash(clientHash, challenge, username, password, DEBUG):
+	if DEBUG:
+		print "Performing verification MD5 hash with username: [" + username + "], password: [" + password + "] and challenge: [" + challenge + "]" 
+	m = hashlib.md5() # Source: https://docs.python.org/2/library/md5.html
+	m.update(challenge)
+	m.update(username)
+	m.update(password)
+	if DEBUG:
+		print "Client hash: " + clientHash
+		print "Server hash: " + m.hexdigest()
+	return m.hexdigest() == clientHash
+
+def initData():
+	try:
+		credentials = open(credFile, 'r').readlines()
+	except Exception:
+		print "Could not open file for reading: " + credFile
+		sys.exit(0)
+	for credential in credentials:
+		DATA[credential.split(",")[0]] = []
+	return credentials
+
+def insertData(username, data):
+	DATA[username].append(float(data))
+	userData = DATA[username]
+	allData = []
+	for key, val in DATA.iteritems():
+		allData.extend(val)
+	return username + " recorded: " + data + " time: " + str(datetime.today()) + " sensorMin: %.2f sensorAvg: %.2f sensorMax: %.2f allAvg: %.2f" % (min(userData), sum(userData)/float(len(userData)), max(userData), sum(allData)/float(len(allData)))
+
+# Main server thread
+def runServer():
+	# Create socket
+	s = socket(AF_INET, SOCK_STREAM)
+	if s < 0: 
+		print "Failed to create TCP socket."
+		sys.exit(0)
+	try:
+		s.bind(('127.0.0.1', port))
+	except Exception:
+		print "Could not bind to port, try choosing a higher port number."
+		sys.exit(0)
+	s.listen(10)
+	
+	credentials = initData()
+
+	# Listen for client and handle 
+	while True:
+		print '\n\n============ LISTENING FOR CONNECTION ============'
+		# Accept connection
+		(clientSocket, clientAddr) = s.accept()
+		
+		# Read msg
+		msg = clientSocket.recv(1024).lstrip().rstrip()
+		msgParts = msg.split("|")
+		USERNAME = msgParts[0]
+		DATA = msgParts[1]
+		DEBUG=msgParts[2]=='True'
+		if DEBUG:
+			print "\nReceived username: [" + USERNAME + "] and reading: [" + DATA + "]"  
+
+		# Challenge response protocol
+		challenge = generateChallengeString()
+		if DEBUG:
+			print "Sending challenge: [" + challenge + "]"
+		clientSocket.sendall(challenge)
+		clientHash = clientSocket.recv(1024).lstrip().rstrip()
+
+		password = findUser(USERNAME, credentials, DEBUG)
+		if password:
+			if verifyHash(clientHash, challenge, USERNAME, password, DEBUG):
+				if DEBUG:
+					print "Client authenticated. Inserting sensor reading: [" + DATA + "]"
+				response = insertData(USERNAME, DATA)
+				clientSocket.sendall(response)
+				print "Sending response: " + response
+			else:
+				print "Unable to authenticate user: " + USERNAME + ". Incorrect password."
+				clientSocket.sendall("Authentication failed for user: " + USERNAME + ". Invalid password.")
+
+		else:
+			print "Unable to find username in passwords.csv: " + USERNAME
+			clientSocket.sendall("Authentication failed for user: " + USERNAME + ". User not found.")
+	# Close socket before shutdown
+	s.close()
+	return
+
+#Entry point
+print "=========== STARTING SERVER ON PORT: " + str(port) + " ============"
+
+runServer()

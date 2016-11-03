@@ -1,0 +1,73 @@
+#!/usr/bin/python
+
+from socket import *
+import sys
+import argparse
+import hashlib
+
+
+#Conn info
+parser = argparse.ArgumentParser(description = "Send sensor data to an aggregation server through TCP")
+parser.add_argument('-s', required=True, type=str, help="Server IP Address", dest = 'serverIP')
+parser.add_argument('-p', required=True, type=int, help="Server Port", dest = 'serverPort')
+parser.add_argument('-u', required=True, type=str, help="Username", dest='username')
+parser.add_argument('-c', required=True, type=str, help="Password", dest='password')
+parser.add_argument('-r', required=True, type=float, help="Sensor reading", dest='reading')
+parser.add_argument('-d', '--debug', required=False, help="Enable debug messages", action="store_true")
+
+args = parser.parse_args()
+
+SERVERADDR=args.serverIP
+PORT=args.serverPort
+USERNAME=args.username
+PASSWORD=args.password
+DATA=args.reading
+DEBUG=args.debug
+
+#Main client thread
+def runClient():
+	
+	s = socket(AF_INET, SOCK_STREAM)
+	
+	msg = USERNAME+"|"+str(DATA)+"|"+str(DEBUG)
+
+	if(DEBUG):
+		print "Connecting to server on IP: " + SERVERADDR + " and port: " + str(PORT)
+	
+	#Connect to server
+	try:
+		s.connect((SERVERADDR, PORT))
+	except Exception:
+		print "Error connecting to server, please check the provided IP address and port number."
+		sys.exit()
+	
+	#Send message
+	if(DEBUG):
+		print "Connected to server."
+		print "Using username: [" + USERNAME + "], password: [" + PASSWORD + "] and reading: [" + str(DATA) + "]"
+		print "Sending message: " + msg + " (<Username>|<Reading>|<DebugFlag>)"
+	s.sendall(msg)
+	
+	#Read challenge response
+	response = s.recv(1024).lstrip().rstrip()
+	
+	if(DEBUG):
+		print "Challenge from server: " + response
+	m = hashlib.md5() # Source: https://docs.python.org/2/library/md5.html
+	m.update(response)
+	m.update(USERNAME)
+	m.update(PASSWORD)
+	s.sendall(m.hexdigest())
+
+	if(DEBUG):
+		print "Calculated MD5 hash: " + m.hexdigest()
+		print "Attempting to insert data to server..."
+	response = s.recv(1024).lstrip().rstrip()
+
+	print "Server response: " + response
+	#Close socket
+	s.close()
+
+#Read args 
+runClient()
+

@@ -1,0 +1,82 @@
+#!/usr/bin/python
+
+from socket import *
+import sys
+import argparse
+import hashlib
+
+
+#Conn info
+parser = argparse.ArgumentParser(description = "Send sensor data to an aggregation server through UDP")
+parser.add_argument('-s', required=True, type=str, help="Server IP Address", dest = 'serverIP')
+parser.add_argument('-p', required=True, type=int, help="Server Port", dest = 'serverPort')
+parser.add_argument('-u', required=True, type=str, help="Username", dest='username')
+parser.add_argument('-c', required=True, type=str, help="Password", dest='password')
+parser.add_argument('-r', required=True, type=float, help="Sensor reading", dest='reading')
+parser.add_argument('-d', '--debug', required=False, help="Enable debug messages", action="store_true")
+
+args = parser.parse_args()
+
+SERVERADDR=args.serverIP
+PORT=args.serverPort
+USERNAME=args.username
+PASSWORD=args.password
+DATA=args.reading
+DEBUG=args.debug
+
+#Main client thread
+def runClient():
+	s = socket(AF_INET, SOCK_DGRAM)
+	s.settimeout(5)
+
+	SERVER = (SERVERADDR, PORT)
+
+	msg = USERNAME+"|"+str(DATA)+"|"+str(DEBUG)
+
+	if(DEBUG):
+		print "Using username: [" + USERNAME + "], password: [" + PASSWORD + "] and reading: [" + str(DATA) + "]"
+		print "Sending message: " + msg + " (<Username>|<Reading>|<DebugFlag>)"
+		print "Attempting to send to server on IP: " + SERVERADDR + " and port: " + str(PORT)
+	
+	#Send to server
+	try:
+		s.sendto(msg, SERVER)
+	except Exception:
+		print "Error connecting to server, please check the provided IP address and port number."
+		sys.exit(0)
+	
+	#Read challenge response
+	try:
+		response = s.recvfrom(1024)	
+	except error:
+		errno, errstr = sys.exc_info()[:2]
+		if errno==timeout:
+			print "Messaged timed out."
+		sys.exit(0)
+	
+	if(DEBUG):
+		print "Challenge from server: " + response[0]
+	m = hashlib.md5()	# Source: https://docs.python.org/2/library/md5.html
+	m.update(response[0])
+	m.update(USERNAME)
+	m.update(PASSWORD)
+	s.sendto(m.hexdigest(), SERVER)
+
+	if(DEBUG):
+		print "Calculated MD5 hash: " + m.hexdigest()
+		print "Attempting to insert data to server..."
+	try:
+		response = s.recvfrom(1024)	
+	except error:
+		errno, errstr = sys.exc_info()[:2]
+		if errno==timeout:
+			print "Messaged timed out."
+		sys.exit(0)
+
+	print "Server response: " + response[0]
+	#Close socket
+	s.close()
+
+#Read args 
+runClient()
+
